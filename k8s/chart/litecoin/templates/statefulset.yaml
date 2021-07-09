@@ -1,0 +1,68 @@
+{{- with .Values.sts }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $.Release.Name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    app: {{ $.Release.Name }}
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: {{ $.Release.Name }}
+  volumeClaimTemplates:
+    - metadata:
+        name: litecoin-data
+      spec:
+        accessModes: {{ .volume.accessModes }}
+        storageClassName: {{ .volume.class }}
+        resources:
+          requests:
+            storage: {{ .volume.size }}
+  template:
+    metadata:
+      labels:
+        app: {{ $.Release.Name }}
+    spec:
+      containers:
+        - name: {{ $.Chart.Name }}
+          image: {{ .container.image.url }}
+          env:
+            - name: ENVIRONMENT
+              value: {{ $.Values.environment }}
+            - name: DATA_PATH
+              value: {{ .volume.mountPath }}
+            {{- range $index, $environment := .container.environment }}
+            - name: {{ $environment.name }}
+              value: {{ $environment.value | quote }}
+            {{- end }}
+          imagePullPolicy: {{ .container.image.pullPolicy }}
+          ports:
+            {{- range $index, $port := .container.ports }}
+            - containerPort: {{ . }}
+            {{- end }}
+          volumeMounts:
+            - name: litecoin-data
+              mountPath: {{ .volume.mountPath }}
+          livenessProbe:
+            httpGet:
+              path: {{ .container.health.liveness.path }}
+              port: {{ .container.health.liveness.port }}
+            initialDelaySeconds: {{ .container.health.liveness.initialDelaySeconds }}
+            timeoutSeconds: {{ .container.health.liveness.timeoutSeconds }}
+            failureThreshold: {{ .container.health.liveness.failureThreshold }}
+            periodSeconds: {{ .container.health.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .container.health.readiness.path }}
+              port: {{ .container.health.readiness.port }}
+            initialDelaySeconds: {{ .container.health.readiness.initialDelaySeconds }}
+            timeoutSeconds: {{ .container.health.readiness.timeoutSeconds }}
+            failureThreshold: {{ .container.health.readiness.failureThreshold }}
+            periodSeconds: {{ .container.health.readiness.periodSeconds }}
+          resources:
+{{ toYaml .container.resources | indent 12 }}
+{{- end }}

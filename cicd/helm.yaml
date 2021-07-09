@@ -1,0 +1,116 @@
+apiVersion: plans.flare.engineering/v1alpha1
+kind: Plan
+metadata:
+  name: helm-workflow
+spec:
+  description: Workflow that will deploy a helm chart
+
+  environment:
+    CLOUDSDK_CONFIG: /workspace/.gcloud
+    GOOGLE_APPLICATION_CREDENTIALS: /workspace/gcp-svc-acc.json
+    KUBECONFIG: /workspace/.kube/k8s-config.yaml
+
+  upsert:
+    ### GCLOUD LOGIN
+    - args:
+        - -c
+        - |
+          set -eu
+          printf '%s' '${{ index .Inputs.svcAcc | getCipher }}' > $GOOGLE_APPLICATION_CREDENTIALS
+          gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+      command: /bin/sh
+      image:
+        url: google/cloud-sdk
+        version: 335.0.0
+      workDir: ${{ .Inputs.workDir }}
+      name: gcloud-login
+
+    ### CLUSTER CREDENTIALS
+    - args:
+        - container
+        - clusters
+        - get-credentials
+        - --zone=${{ .Inputs.k8sCluster.zone }}
+        - --project=${{ .Inputs.gcpProject }}
+        - ${{ .Inputs.k8sCluster.name }}
+      command: gcloud
+      image:
+        url: quay.io/evl.ms/gcloud-helm
+        version: 285.0.1
+      workDir: ${{ .Inputs.workDir }}
+      name: k8s-cluster-context
+
+    ### HELM UPGRADE
+    - args:
+        - -c
+        - |
+          set -eu
+
+          echo 'Creating release values...'
+          printf '%s' '${{ index .Inputs.helm.inputs | toJson }}' > ${{ .Inputs.workDir }}/release-values.yaml
+
+          helm_flags='upgrade -i --namespace ${{ .Inputs.helm.releaseNamespace }} --timeout ${{ .Inputs.helm.timeout }} --wait --debug'
+          if [ -n "$REPOSITORY_BRANCH" ]; then
+            helm_flags="$helm_flags --dry-run"
+          fi
+
+          echo 'installing...'
+          helm $helm_flags -f ${{ .Inputs.workDir }}/release-values.yaml ${{ .Inputs.helm.releaseName }} .
+      command: /bin/sh
+      image:
+        url: quay.io/evl.ms/gcloud-helm
+        version: 285.0.1
+      workDir: ${{ .Inputs.workDir }}
+      name: helm-upgrade
+
+  delete:
+    ### GCLOUD LOGIN
+    - args:
+        - -c
+        - |
+          set -eu
+          printf '%s' '${{ index .Inputs.svcAcc | getCipher }}' > $GOOGLE_APPLICATION_CREDENTIALS
+          gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+      command: /bin/sh
+      image:
+        url: google/cloud-sdk
+        version: 335.0.0
+      workDir: ${{ .Inputs.workDir }}
+      name: gcloud-login
+
+    ### CLUSTER CREDENTIALS
+    - args:
+        - container
+        - clusters
+        - get-credentials
+        - --zone=${{ .Inputs.k8sCluster.zone }}
+        - --project=${{ .Inputs.gcpProject }}
+        - ${{ .Inputs.k8sCluster.name }}
+      command: gcloud
+      condition: "false"
+      image:
+        url: quay.io/evl.ms/gcloud-helm
+        version: 285.0.1
+      workDir: ${{ .Inputs.workDir }}
+      name: k8s-cluster-context
+
+    ### HELM UNINSTALL
+    - args:
+        - -c
+        - |
+          set -eu
+
+          helm_flags='uninstall --namespace ${{ .Inputs.helm.releaseNamespace }} --timeout ${{ .Inputs.helm.timeout }} --debug'
+          if [ -n "$REPOSITORY_BRANCH" ]; then
+            helm_flags="$helm_flags --dry-run"
+          fi
+
+          echo 'uninstalling...'
+          helm $helm_flags ${{ .Inputs.helm.releaseName }}
+      command: /bin/sh
+      condition: "false"
+      image:
+        url: quay.io/evl.ms/gcloud-helm
+        version: 285.0.1
+      workDir: ${{ .Inputs.workDir }}
+      name: helm-uninstall

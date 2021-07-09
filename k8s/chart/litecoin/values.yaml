@@ -1,0 +1,70 @@
+environment: dev
+
+replicaCount: 1
+#9332 9333 19332 19333 19444
+service:
+  type: None
+  prefix: /
+  ports:
+    - port: 9332
+      targetPort: 9332
+      protocol: TCP
+      name: rpc
+    - port: 9333
+      targetPort: 9333
+      protocol: TCP
+      name: tcp
+    - port: 19332
+      targetPort: 19332
+      protocol: TCP
+      name: rpc-testnet
+    - port: 19335
+      targetPort: 19335
+      protocol: TCP
+      name: tcp-testnet
+    - port: 19444
+      targetPort: 19444
+      protocol: TCP
+      name: regtest
+
+sts:
+  volume:
+    mountPath: /tmp/litecoin-data
+    class: pd-standard
+    size: 10Gi
+    accessModes:
+      - "ReadWriteOnce"
+  container:
+    image:
+      pullPolicy: IfNotPresent
+      url:
+    ports:
+      - 9332
+      - 9333
+      - 19332
+      - 19335
+      - 19444
+    environment:
+    health:
+      readiness:
+        path: /health
+        port: 8080
+        initialDelaySeconds: 60
+        timeoutSeconds: 2
+        failureThreshold: 5
+        periodSeconds: 5
+      liveness:
+        path: /health
+        port: 8080
+        initialDelaySeconds: 60
+        timeoutSeconds: 2
+        failureThreshold: 10
+        periodSeconds: 5
+    resources:
+      requests:
+        cpu: 100m
+        memory: 100Mi
+      limits:
+        cpu: 300m
+        memory: 300Mi
+

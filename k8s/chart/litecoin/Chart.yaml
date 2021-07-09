@@ -1,0 +1,4 @@
+apiVersion: v2
+description: Simple chart to provision a statefulset for litecoin
+name: litecoin
+version: 0.0.1
